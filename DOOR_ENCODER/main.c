@@ -14,6 +14,7 @@ void config_ports(void);
 void config_interrupts(void);
 
 
+unsigned int State, LastState;
 uint16_t ciclos;
 
 int main(void) {
@@ -32,15 +33,9 @@ int main(void) {
 
   config_interrupts();
 
-
-
   lcdclear();
 
-  prints("En Operacion");
-  gotoXy(0,1);
-  integerToLcd(ciclos);
-
-	while (1) {
+    while (1) {
 
 		if((P2IN & BIT1)==0){
 			P1OUT |= BIT0;
@@ -95,6 +90,134 @@ __interrupt void TIMER1_A0_ISR(void)
 {
   P1OUT ^= LED0;                            // Toggle P1.0
   TA1CCR0 += 50000;                         // Add Offset to CCR0
+
+  // Finite state machine:
+	switch(State)
+	{
+		/**************************************************/
+		case STATE_INIT:
+			
+			gotoXy(0,0); prints("En Operacion");
+			gotoXy(0,1); integerToLcd(ciclos);
+			P1OUT |= (O_DOOR_UP + O_DOOR_DOWN); // 1 - RELAYS OFF
+
+
+			if ((P1IN & I_DOOR_IS_DOWN ) == 0)
+			{
+				State = STATE_DOOR_IS_DOWN;
+			}
+			else if((P1IN & I_DOOR_IS_UP)== 0)
+			{
+				State = STATE_DOOR_IS_UP;
+			}
+			else
+			{
+				State = STATE_OPENING;
+			}
+
+			if ((P1IN & I_EMERGENCY_STOP ) == 0)
+			{
+				LastState = STATE_INIT;
+				State = STATE_ESTOP;
+			}
+
+		break;
+		/**************************************************/
+		case STATE_DOOR_IS_DOWN:
+			P1OUT |= (O_DOOR_UP + O_DOOR_DOWN); // 1 - RELAYS OFF
+
+			if( P1IN & I_BUTTON )
+			{
+				State = STATE_OPENING;
+			}
+		break;
+		/**************************************************/
+		case STATE_OPENING:
+
+			P1OUT &= ~(O_DOOR_UP);     // 0 - ON
+			P1OUT |= O_DOOR_DOWN;      // 1 - OFF
+			if((P1IN & I_DOOR_IS_UP)== 0)
+			{
+				State = STATE_DOOR_IS_UP;
+			}
+			if ((P1IN & I_EMERGENCY_STOP ) == 0)
+			{
+				LastState = STATE_OPENING;
+				State = STATE_ESTOP;
+			}
+
+		break;
+		/**************************************************/
+		case STATE_DOOR_IS_UP:
+
+			P1OUT |= (O_DOOR_UP + O_DOOR_DOWN); // 1 - RELAYS OFF
+			timerCount++;
+
+			if( ((P1IN & I_SAFETY_SENSOR)==0) || P1IN & I_BUTTON )
+			{
+				timerCount=0;
+			}
+
+			if(timerCount >= WAIT_TIME )
+			{
+				timerCount=0;
+				State = STATE_CLOSING;
+			}
+
+			if ((P1IN & I_EMERGENCY_STOP ) == 0)
+			{
+				LastState = STATE_DOOR_IS_UP;
+				State = STATE_ESTOP;
+			}
+
+
+			//leer del pot
+		break;
+
+		/**************************************************/
+		case STATE_CLOSING:
+
+			P1OUT &= ~(O_DOOR_DOWN); 	// 0 - ON
+			P1OUT |= O_DOOR_UP;   // 1 - OFF
+			if( ((P1IN & I_SAFETY_SENSOR)==0) || P1IN & I_BUTTON )
+			{
+				State = STATE_WAIT_AND_UP;
+			}
+			if ((P1IN & I_DOOR_IS_DOWN ) == 0)
+			{
+				State = STATE_DOOR_IS_DOWN;
+			}
+
+			if ((P1IN & I_EMERGENCY_STOP ) == 0)
+			{
+				LastState = STATE_DOOR_IS_DOWN; //Lo mandamos a este estado por si aprietan el boton, abra la puerta
+				State = STATE_ESTOP;
+			}
+
+		break;
+		/**************************************************/
+		case STATE_WAIT_AND_UP:
+
+			P1OUT |= (O_DOOR_UP + O_DOOR_DOWN); // 1 - RELAYS OFF
+			_delay_cycles(1000000);
+			State = STATE_OPENING;
+
+		break;
+		/**************************************************/
+		case STATE_ESTOP:
+
+			P1OUT |= (O_DOOR_UP + O_DOOR_DOWN); // 1 - RELAYS OFF
+			if( P1IN & I_EMERGENCY_STOP)
+			{
+				State = LastState;
+			}
+
+		break;
+
+	}
+
+
+
 }
 
 // Port 1 interrupt service routine
