@@ -8,14 +8,15 @@
 #include <stdint.h>
 #include "definitions.h"
 #include "lcd.h"
-
+#include "flash.h"
 
 void config_ports(void);
 void config_interrupts(void);
 
-
 unsigned int State, LastState;
 uint16_t ciclos;
+uint16_t upper_limit;
+uint16_t lower_limit;
 
 int main(void) {
 
@@ -30,10 +31,19 @@ int main(void) {
   gotoXy(0,1);
   prints("Inicializando...");
   __delay_cycles(3000000);
+  __no_operation();
+  erase_flash();
+  __no_operation();
+  write_flash_c(0xBA,0);
+  __no_operation();
+  write_flash_i(1982,1);
+  __no_operation();
 
   config_interrupts();
 
   lcdclear();
+
+  State = STATE_INIT;
 
     while (1) {
 
@@ -101,25 +111,9 @@ __interrupt void TIMER1_A0_ISR(void)
 			gotoXy(0,1); integerToLcd(ciclos);
 			P1OUT |= (O_DOOR_UP + O_DOOR_DOWN); // 1 - RELAYS OFF
 
+			//TENGO QUE LEER MI ULTIMO ESTADO PARA SABER DONDE ESTOY
 
-			if ((P1IN & I_DOOR_IS_DOWN ) == 0)
-			{
-				State = STATE_DOOR_IS_DOWN;
-			}
-			else if((P1IN & I_DOOR_IS_UP)== 0)
-			{
-				State = STATE_DOOR_IS_UP;
-			}
-			else
-			{
-				State = STATE_OPENING;
-			}
 
-			if ((P1IN & I_EMERGENCY_STOP ) == 0)
-			{
-				LastState = STATE_INIT;
-				State = STATE_ESTOP;
-			}
 
 		break;
 		/**************************************************/
@@ -136,38 +130,18 @@ __interrupt void TIMER1_A0_ISR(void)
 
 			P1OUT &= ~(O_DOOR_UP);     // 0 - ON
 			P1OUT |= O_DOOR_DOWN;      // 1 - OFF
-			if((P1IN & I_DOOR_IS_UP)== 0)
-			{
-				State = STATE_DOOR_IS_UP;
-			}
-			if ((P1IN & I_EMERGENCY_STOP ) == 0)
-			{
-				LastState = STATE_OPENING;
-				State = STATE_ESTOP;
-			}
+
 
 		break;
 		/**************************************************/
 		case STATE_DOOR_IS_UP:
 
 			P1OUT |= (O_DOOR_UP + O_DOOR_DOWN); // 1 - RELAYS OFF
-			timerCount++;
+
 
 			if( ((P1IN & I_SAFETY_SENSOR)==0) || P1IN & I_BUTTON )
 			{
-				timerCount=0;
-			}
 
-			if(timerCount >= WAIT_TIME )
-			{
-				timerCount=0;
-				State = STATE_CLOSING;
-			}
-
-			if ((P1IN & I_EMERGENCY_STOP ) == 0)
-			{
-				LastState = STATE_DOOR_IS_UP;
-				State = STATE_ESTOP;
 			}
 
 
@@ -183,16 +157,7 @@ __interrupt void TIMER1_A0_ISR(void)
 			{
 				State = STATE_WAIT_AND_UP;
 			}
-			if ((P1IN & I_DOOR_IS_DOWN ) == 0)
-			{
-				State = STATE_DOOR_IS_DOWN;
-			}
 
-			if ((P1IN & I_EMERGENCY_STOP ) == 0)
-			{
-				LastState = STATE_DOOR_IS_DOWN; //Lo mandamos a este estado por si aprietan el boton, abra la puerta
-				State = STATE_ESTOP;
-			}
 
 		break;
 		/**************************************************/
