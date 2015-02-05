@@ -12,8 +12,8 @@
 
 void write_flash_c(char, unsigned int);
 void write_flash_i(int, unsigned int);
-void erase_flash(void);
-unsigned int current_ptr(void);
+void erase_flash(char *);
+unsigned int current_ptr_offset(void);
 
 
 #endif /* FLASH_H_ */

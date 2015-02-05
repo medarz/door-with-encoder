@@ -6,15 +6,15 @@
  */
 
 #include "flash.h"
+#include "definitions.h"
 
-unsigned int current_ptr(){
+unsigned int current_ptr_offset(){
 
 	unsigned int i;
 	char *Flash_ptrD;
+	Flash_ptrD = FLASH_SEG_D;             // Initialize Flash segment D ptr
 
-	Flash_ptrD = (char *) 0x1800;             // Initialize Flash segment D ptr
-
-	for (i = 0; i < 128; i++)
+	for (i = 0; i < 256; i++)
 	{
 		if( Flash_ptrD[i] == 0xFF)          // copy value segment C to seg D
 			return i;
@@ -22,22 +22,20 @@ unsigned int current_ptr(){
 	return 0;
 
 }
-void erase_flash(){
+void erase_flash(char *Flash_ptr){
 
-	char *Flash_ptrD;
-	Flash_ptrD = (char *) 0x1800;             // Initialize Flash segment D ptr
     FCTL3 = FWKEY; // Clear LOCK
 	FCTL1 = FWKEY+ERASE; //Enable segment erase
-	*Flash_ptrD = 0; // Dummy write, erase Segment
+	*Flash_ptr = 0; // Dummy write, erase Segment
 	while(FCTL3 & BUSY);
 	FCTL3 = FWKEY+LOCK; // Done, set LOCK
 
 }
 
-void write_flash_c(char value, unsigned int offset)
-{
+void write_flash_c(char value, unsigned int offset){
+
   char * Flash_ptr;                         // Initialize Flash pointer
-  Flash_ptr = (char *) 0x1800;              // Segment D
+  Flash_ptr = FLASH_SEG_D;              	// Segment D
   FCTL3 = FWKEY;                            // Clear Lock bit
   FCTL1 = FWKEY+WRT;                        // Set WRT bit for write operation
   Flash_ptr[offset] = value;
@@ -48,7 +46,7 @@ void write_flash_c(char value, unsigned int offset)
 void write_flash_i(int value, unsigned int offset)
 {
   char * Flash_ptr;                         // Initialize Flash pointer
-  Flash_ptr = (char *) 0x1800;              // Segment D
+  Flash_ptr = FLASH_SEG_D;              // Segment D
   FCTL3 = FWKEY;                            // Clear Lock bit
   FCTL1 = FWKEY+WRT;                        // Set WRT bit for write operation
 

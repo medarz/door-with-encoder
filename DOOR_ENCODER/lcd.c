@@ -44,11 +44,16 @@ void lcdData(unsigned char l)
 
 }
 
-void lcdclear(){
+void lcdclear(unsigned char lines){
+
 	gotoXy(0,0);
 	prints("                ");
-	gotoXy(0,1);
-	prints("                ");
+
+	if(lines==2)
+	{
+		gotoXy(0,1);
+		prints("                ");
+	}
 	gotoXy(0,0);
 }
 
@@ -115,21 +120,22 @@ void gotoXy(unsigned char  x,unsigned char y)
 	  }
 
 }
-void integerToLcd(int integer )
+void integerToLcd(unsigned int integer)
 {
+	unsigned char tenthousands,thousands,hundreds,tens,ones;
 
-	unsigned char thousands,hundreds,tens,ones;
+	tenthousands = integer / 10000;
+	lcdData(tenthousands + 0x30);
+
 	thousands = integer / 1000;
-
     lcdData(thousands + 0x30);
 
 	hundreds = ((integer - thousands*1000)-1) / 100;
+	lcdData( hundreds + 0x30 );
 
-	lcdData( hundreds + 0x30);
 	tens=(integer%100)/10;
-
 	lcdData( tens + 0x30);
-	ones=integer%10;
 
+	ones=integer%10;
 	lcdData( ones + 0x30);
 }

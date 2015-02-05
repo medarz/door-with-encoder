@@ -14,10 +14,9 @@
 #define  RS BIT6
 
 void waitlcd(unsigned int x);
-
-void lcdinit(void);
-void lcdclear(void);
-void integerToLcd(int integer );
+void lcdinit();
+void lcdclear(unsigned char x);
+void integerToLcd(unsigned int integer );
 void lcdData(unsigned char l);
 void prints(char *s);
 void gotoXy(unsigned char  x,unsigned char y);
