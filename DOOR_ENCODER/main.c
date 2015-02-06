@@ -13,12 +13,14 @@
 void config_ports(void);
 void config_interrupts(void);
 uint8_t door_menu(void);
-void door_set_limits(uint8_t);
+uint8_t door_set_limits(uint8_t);
+void door_move(void);
 
 uint8_t State, LastState;
 uint8_t StateEnc, LastStateEnc;
+uint8_t StateMenu, bMenu = 0;
 
-uint16_t ciclos;
+uint16_t ciclos, timer_save=0;
 uint16_t upper_limit;
 uint16_t lower_limit;
 
@@ -180,7 +182,7 @@ __interrupt void TIMER1_A0_ISR(void)
 
 			TA1CCTL0 &= ~CCIE;
 			P1OUT |= (O_DOOR_UP + O_DOOR_DOWN); // 1 - RELAYS OFF
-			door_menu();
+			bMenu = door_menu();
 			TA1CCTL0 |=  CCIE;
 
 		break;
@@ -194,7 +196,6 @@ __interrupt void TIMER1_A0_ISR(void)
 			}
 
 		break;
-
 	}
 }
 
@@ -206,17 +207,64 @@ uint8_t door_menu(void){
 	return 0;
 }
 
-void door_set_limits(uint8_t reason){
+uint8_t door_set_limits(uint8_t reason){
+
+	lcdclear(2);
 
 	switch (reason){
 		case REASON_NO_LIMITS:
-			break;
-		case REASON_MANUAL:
-			break;
+			prints("No hay limites."); gotoXy(0,1); prints("OK");
+			while(!(I_BUTTON_LEFT_PRESSED));
+		break;
 		case REASON_DOOR_LOST:
-			break;
+			prints("Redefinir ref."); gotoXy(0,1); prints("OK");
+			while(!(I_BUTTON_LEFT_PRESSED));
+		break;
+		case REASON_MANUAL:
+			prints("Cambiar limites?");
+			prints("SI            NO");
+			do{
+				if(I_BUTTON_RIGHT_PRESSED)
+				{
+					while(I_BUTTON_RIGHT_PRESSED);
+					return 0;
+				}
+			}while(!(I_BUTTON_LEFT_PRESSED));
+		break;
 	}
+	while(I_BUTTON_LEFT_PRESSED);
 
+	lcdclear(2);
+	prints("Limite Cerrar");
+	gotoXy(0,1); prints("SUBIR     BAJAR");
+	door_move();
+	//guardar valor leido por encoder
+	lcdclear(1);
+	prints("Limite Abrir");
+	door_move();
+    //guardar valor leido por encoder
+	return 1;
+
+}
+
+void door_move(){
+
+	do{
+		if(I_BUTTON_LEFT_PRESSED){
+			timer_save = 0;
+			P1OUT &= ~(O_DOOR_UP);     // 0 - ON
+			P1OUT |= O_DOOR_DOWN;      // 1 - OFF
+			while(I_BUTTON_LEFT_PRESSED);
+			P1OUT &= ~(O_DOOR_UP + O_DOOR_DOWN);     // 0 - ON
+		}
+		else if(I_BUTTON_RIGHT_PRESSED){
+			timer_save = 0;
+			P1OUT &= ~(O_DOOR_DOWN);     // 0 - ON
+			P1OUT |= O_DOOR_UP;      // 1 - OFF
+			while(I_BUTTON_RIGHT_PRESSED);
+			P1OUT &= ~(O_DOOR_UP + O_DOOR_DOWN);     // 0 - ON
+		}
+	}while(timer_save < 1000);
 }
 
 // Port 1 interrupt service routine
