@@ -19,6 +19,7 @@ void door_move(void);
 uint8_t State, LastState;
 uint8_t StateEnc, LastStateEnc;
 uint8_t StateMenu, bMenu = 0;
+uint8_t bNoMove = 0;
 
 uint16_t ciclos, timer_save=0;
 uint16_t upper_limit;
@@ -93,6 +94,10 @@ void config_interrupts(){
 	  TA1CCTL0 = CCIE;                          // CCR0 interrupt enabled
 	  TA1CCR0  = 50000;
 	  TA1CTL   = TASSEL_2 + MC_2 + TACLR;         // SMCLK, contmode, clear TAR
+
+	  TB0CCTL0 &= ~CCIE;                          // CCR0 interrupt disabled
+	  TB0CCR0   =  50000;
+	  TB0CTL    =  TBSSEL_2 + MC_2 + TBCLR;         // SMCLK, contmode, clear TAR
 
 	  P1IES |=  BIT1;                            // P1.4 Hi/Lo edge
 	  P1IFG &= ~BIT1;                           // P1.4 IFG cleared
@@ -234,15 +239,32 @@ uint8_t door_set_limits(uint8_t reason){
 	}
 	while(I_BUTTON_LEFT_PRESSED);
 
+	timer_save=0;
+	TB0CCTL0 |= CCIE;
+
 	lcdclear(2);
 	prints("Limite Cerrar");
 	gotoXy(0,1); prints("SUBIR     BAJAR");
 	door_move();
 	//guardar valor leido por encoder
-	lcdclear(1);
-	prints("Limite Abrir");
-	door_move();
+	if(bNoMove)
+	{
+		bNoMove = 0;
+		lcdclear(1);
+		prints("Limite Abrir");
+		door_move();
+		if(!bNoMove) { TB0CCTL0 &= ~CCIE; return 0; }
+	}
+	else
+	{
+		TB0CCTL0 &= ~CCIE;
+		return 0;
+	}
+
     //guardar valor leido por encoder
+
+	lcdclear(2);
+	prints("Lim. Modificados");
 	return 1;
 
 }
@@ -264,7 +286,13 @@ void door_move(){
 			while(I_BUTTON_RIGHT_PRESSED);
 			P1OUT &= ~(O_DOOR_UP + O_DOOR_DOWN);     // 0 - ON
 		}
-	}while(timer_save < 1000);
+	}while( timer_save < WAIT_FOR_LIMIT_TIMEOUT );
+}
+
+#pragma vector=TIMER0_B1_VECTOR
+__interrupt void TIMER0_B1_ISR(void)
+{
+	timer_save++;
 }
 
 // Port 1 interrupt service routine
