@@ -19,7 +19,7 @@ void door_move(void);
 uint8_t State, LastState;
 uint8_t StateEnc, LastStateEnc;
 uint8_t StateMenu, bMenu = 0;
-uint8_t bNoMove = 0;
+uint8_t bNoMove = 0, bLCDPrint=0, limits = 0, offset;
 
 uint16_t ciclos, timer_save=0;
 uint16_t upper_limit;
@@ -39,7 +39,7 @@ int main(void) {
   gotoXy(0,1);
   prints("Inicializando...");
   __delay_cycles(3000000);
-
+/*
   __no_operation();
   erase_flash(FLASH_SEG_D);
   __no_operation();
@@ -47,9 +47,11 @@ int main(void) {
   __no_operation();
   write_flash_i(1982,1);
   __no_operation();
-
+*/
   config_interrupts();
   lcdclear(2);
+
+  offset = current_ptr_offset();
 
   State = STATE_INIT;
 
@@ -63,6 +65,9 @@ int main(void) {
    		    integerToLcd(ciclos);
 			P1OUT &= ~BIT0;
 		}
+		if(limits==1){
+			limits = door_set_limits(REASON_NO_LIMITS);
+		}
 	}
 	return 0;
 }
@@ -73,8 +78,14 @@ void config_ports(){
 	/************************************************************/
 	/*                        OUTPUTs                           */
 	/************************************************************/
-	  P1DIR |= LED0;
-	  P1OUT  = 0x00;
+	  PORT_LED0_DIR |=  LED0;
+	  PORT_LED0     &= ~LED0;
+
+	  PORT_LED1_DIR |=  LED1;
+	  PORT_LED1     &= ~LED1;
+
+	  PORT_DOOR_RELAYS_DIR |=  O_DOOR_DOWN + O_DOOR_UP;
+	  PORT_DOOR_RELAYS     &= ~(O_DOOR_DOWN + O_DOOR_UP); //OFF
 
 	/************************************************************/
 	/*                        INPUTs                            */
@@ -91,17 +102,16 @@ void config_ports(){
 
 void config_interrupts(){
 
-	  TA1CCTL0 = CCIE;                          // CCR0 interrupt enabled
+	  TA1CCTL0 |= CCIE;                          // CCR0 interrupt enabled
 	  TA1CCR0  = 50000;
-	  TA1CTL   = TASSEL_2 + MC_2 + TACLR;         // SMCLK, contmode, clear TAR
+	  TA1CTL   = TASSEL_2 + MC_1 + TACLR;         // SMCLK, contmode, clear TAR
 
-	  TB0CCTL0 &= ~CCIE;                          // CCR0 interrupt disabled
-	  TB0CCR0   =  50000;
-	  TB0CTL    =  TBSSEL_2 + MC_2 + TBCLR;         // SMCLK, contmode, clear TAR
 
-	  P1IES |=  BIT1;                            // P1.4 Hi/Lo edge
-	  P1IFG &= ~BIT1;                           // P1.4 IFG cleared
-	  P1IE  |=  BIT1;                             // P1.4 interrupt enabled
+	  //TBCTL = TBSSEL_1 + MC_1 + ID_3;         // SMCLK, contmode, clear TAR
+
+	 // P1IES |=  BIT1;                            // P1.4 Hi/Lo edge
+	 // P1IFG &= ~BIT1;                           // P1.4 IFG cleared
+	 // P1IE  |=  BIT1;                             // P1.4 interrupt enabled
 
 	  __enable_interrupt();
 }
@@ -110,8 +120,10 @@ void config_interrupts(){
 #pragma vector=TIMER1_A0_VECTOR
 __interrupt void TIMER1_A0_ISR(void)
 {
-  P1OUT   ^= LED0;                            // Toggle P1.0
-  TA1CCR0 += 50000;                         // Add Offset to CCR0
+  //P1OUT   ^= LED0;                            // Toggle P1.0
+  //TA1CCR0 += 50000;                         // Add Offset to CCR0
+
+  char* limites = FLASH_SEG_B;
 
   // Finite state machine:
 	switch(State)
@@ -119,18 +131,23 @@ __interrupt void TIMER1_A0_ISR(void)
 		/**************************************************/
 		case STATE_INIT:
 
-			lcdclear(1);
-			prints("En Operacion");
-			gotoXy(0,1); integerToLcd(ciclos);
-
+			if(!bLCDPrint)
+			{
+				lcdclear(1);
+				prints("En Operacion");
+				gotoXy(0,1); integerToLcd(ciclos);
+				bLCDPrint = 1;
+			}
 			P1OUT |= (O_DOOR_UP + O_DOOR_DOWN); // 1 - RELAYS OFF
 
-			//if()
-			door_set_limits(REASON_NO_LIMITS);
-
+			if( *(limites) == 0xFF)
+			{
+				State = STATE_LIMIT_DEFINITION;
+				bLCDPrint = 0;
+			}
 			//Si mi ultimo estado es que estaba subiendo o bajando, se ha perdido
 			//la referencia. Hay que configurar límites de nuevo
-			door_set_limits(REASON_DOOR_LOST);
+			//door_set_limits(REASON_DOOR_LOST);
 
 			//TENGO QUE LEER MI ULTIMO ESTADO PARA SABER DONDE ESTOY
 
@@ -164,9 +181,13 @@ __interrupt void TIMER1_A0_ISR(void)
 		/**************************************************/
 		case STATE_DOOR_IS_UP:
 
-			lcdclear(2);
-			prints("Puerta Abierta");
-			gotoXy(0,1); integerToLcd(ciclos);
+			if( bLCDPrint == 0){
+				lcdclear(2);
+				prints("Puerta Abierta");
+				gotoXy(0,1); integerToLcd(ciclos);
+				bLCDPrint=1;
+			}
+
 
 			P1OUT |= (O_DOOR_UP + O_DOOR_DOWN); // 1 - RELAYS OFF
 			//leer del pot
@@ -184,11 +205,14 @@ __interrupt void TIMER1_A0_ISR(void)
 		break;
 		/**************************************************/
 		case STATE_MENU:
-
-			TA1CCTL0 &= ~CCIE;
 			P1OUT |= (O_DOOR_UP + O_DOOR_DOWN); // 1 - RELAYS OFF
 			bMenu = door_menu();
-			TA1CCTL0 |=  CCIE;
+		break;
+		/**************************************************/
+		case STATE_LIMIT_DEFINITION:
+
+			 limits=1;
+			 timer_save++;
 
 		break;
 		/**************************************************/
@@ -206,8 +230,8 @@ __interrupt void TIMER1_A0_ISR(void)
 
 uint8_t door_menu(void){
 // Menu de la puerta:
-// 1. Ver límites
-// 2. Configurar límites
+// 1. Ver limites
+// 2. Configurar limites
 
 	return 0;
 }
@@ -240,32 +264,33 @@ uint8_t door_set_limits(uint8_t reason){
 	while(I_BUTTON_LEFT_PRESSED);
 
 	timer_save=0;
-	TB0CCTL0 |= CCIE;
 
 	lcdclear(2);
 	prints("Limite Cerrar");
-	gotoXy(0,1); prints("SUBIR     BAJAR");
+	gotoXy(0,1); prints("SUBIR      BAJAR");
 	door_move();
 	//guardar valor leido por encoder
 	if(bNoMove)
 	{
-		bNoMove = 0;
+		bNoMove = 0; timer_save = 0;
 		lcdclear(1);
 		prints("Limite Abrir");
 		door_move();
-		if(!bNoMove) { TB0CCTL0 &= ~CCIE; return 0; }
+		if(!bNoMove) { return 1; }
 	}
 	else
 	{
-		TB0CCTL0 &= ~CCIE;
-		return 0;
+		return 1;
 	}
 
     //guardar valor leido por encoder
 
 	lcdclear(2);
 	prints("Lim. Modificados");
-	return 1;
+	__delay_cycles(2000000);
+	bLCDPrint = 0;
+	State = STATE_DOOR_IS_UP;
+	return 0;
 
 }
 
@@ -273,33 +298,31 @@ void door_move(){
 
 	do{
 		if(I_BUTTON_LEFT_PRESSED){
-			timer_save = 0;
-			P1OUT &= ~(O_DOOR_UP);     // 0 - ON
-			P1OUT |= O_DOOR_DOWN;      // 1 - OFF
+			timer_save = 0; bNoMove=1;
+			PORT_DOOR_RELAYS &= ~(O_DOOR_UP);     // 0 - Off
+			PORT_DOOR_RELAYS |= O_DOOR_DOWN;      // 1 - On
+			LED0_ON;
 			while(I_BUTTON_LEFT_PRESSED);
-			P1OUT &= ~(O_DOOR_UP + O_DOOR_DOWN);     // 0 - ON
+			LED0_OFF;
+			PORT_DOOR_RELAYS &= ~(O_DOOR_UP + O_DOOR_DOWN);     // 0 - OFF
 		}
 		else if(I_BUTTON_RIGHT_PRESSED){
-			timer_save = 0;
-			P1OUT &= ~(O_DOOR_DOWN);     // 0 - ON
-			P1OUT |= O_DOOR_UP;      // 1 - OFF
+			timer_save = 0; bNoMove=1;
+			PORT_DOOR_RELAYS &= ~(O_DOOR_DOWN);     // 0 - Off
+			PORT_DOOR_RELAYS |= O_DOOR_UP;      // 1 - On
+			LED1_ON;
 			while(I_BUTTON_RIGHT_PRESSED);
-			P1OUT &= ~(O_DOOR_UP + O_DOOR_DOWN);     // 0 - ON
+			LED1_OFF;
+			PORT_DOOR_RELAYS &= ~(O_DOOR_UP + O_DOOR_DOWN);     // 0 - ON
 		}
 	}while( timer_save < WAIT_FOR_LIMIT_TIMEOUT );
-}
-
-#pragma vector=TIMER0_B1_VECTOR
-__interrupt void TIMER0_B1_ISR(void)
-{
-	timer_save++;
 }
 
 // Port 1 interrupt service routine
 #pragma vector=PORT1_VECTOR
 __interrupt void Port_1(void)
 {
-  ciclos++;;                            // P1.0 = toggle
+  ciclos++;                            // P1.0 = toggle
   gotoXy(0,1);
   integerToLcd(ciclos);
   P1IFG &= ~BIT1;                          // P1.4 IFG cleared
@@ -317,7 +340,24 @@ __interrupt void Port_1(void)
 		case   16: break;  //  P1.7
   	}
 
+}
 
+#pragma vector=TIMERB1_VECTOR
+__interrupt void TIMER1_ISR(void)
+{
+	 switch( __even_in_range(TBIV,14) )
+	  {
+	    case  0: break;                          // No interrupt
+	    case  2: break;                          // CCR1 not used
+	    case  4: break;                          // CCR2 not used
+	    case  6: break;                          // CCR3 not used
+	    case  8: break;                          // CCR4 not used
+	    case 10: break;                          // CCR5 not used
+	    case 12: break;                          // CCR6 not used
+	    case 14: timer_save++;                  // overflow
+	            break;
+	    default: break;
+	  }
 }
 
 

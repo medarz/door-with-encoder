@@ -10,6 +10,19 @@
 #define DEFINITIONS_H_
 
 /*------------------------------------------------------------------------------
+ * PORTS
+ *----------------------------------------------------------------------------*/
+#define		PORT_DOOR_RELAYS		P3OUT
+#define		PORT_DOOR_RELAYS_DIR	P3DIR
+
+#define		PORT_LED0				P1OUT
+#define		PORT_LED0_DIR			P1DIR
+
+#define		PORT_LED1				P4OUT
+#define		PORT_LED1_DIR			P4DIR
+
+
+/*------------------------------------------------------------------------------
  * INPUTS
  *----------------------------------------------------------------------------*/
 #define 	I_BUTTON_RIGHT			BIT1
@@ -25,9 +38,16 @@
 /*------------------------------------------------------------------------------
  * OUTPUTS
  *----------------------------------------------------------------------------*/
-#define		O_DOOR_DOWN				BIT6
-#define		O_DOOR_UP				BIT7
+#define		O_DOOR_DOWN				BIT1
+#define		O_DOOR_UP				BIT0
+
 #define     LED0					BIT0
+#define 	LED0_ON					PORT_LED0 |= LED0
+#define     LED0_OFF				PORT_LED0 &= ~LED0
+
+#define     LED1					BIT7
+#define 	LED1_ON					PORT_LED1 |= LED1
+#define     LED1_OFF				PORT_LED1 &= ~LED1
 
 /*------------------------------------------------------------------------------
  * STATE MACHINE DOOR
@@ -40,6 +60,7 @@
 #define  STATE_ESTOP				0x60
 #define  STATE_DOOR_IS_LOST			0x70
 #define  STATE_MENU					0xEF
+#define  STATE_LIMIT_DEFINITION		0x80
 
 /*------------------------------------------------------------------------------
  * STATE MACHINE ENCODER
@@ -53,7 +74,7 @@
  * 	TIMERS
  *----------------------------------------------------------------------------*/
 #define  WAIT_FOR_MENU		  		1000
-#define  WAIT_FOR_LIMIT_TIMEOUT     1000
+#define  WAIT_FOR_LIMIT_TIMEOUT     180
 
 /*------------------------------------------------------------------------------
  * 	MENU RELATED

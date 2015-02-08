@@ -14,7 +14,7 @@ unsigned int current_ptr_offset(){
 	char *Flash_ptrD;
 	Flash_ptrD = FLASH_SEG_D;             // Initialize Flash segment D ptr
 
-	for (i = 0; i < 256; i++)
+	for (i = 0; i < 256; i++)            // Leer los dos primeros segmentos
 	{
 		if( Flash_ptrD[i] == 0xFF)          // copy value segment C to seg D
 			return i;
