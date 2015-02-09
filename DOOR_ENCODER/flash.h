@@ -13,7 +13,8 @@
 void write_flash_c(char, unsigned int);
 void write_flash_i(int, unsigned int);
 void erase_flash(char *);
-unsigned int current_ptr_offset(void);
+void write_flash_segA(int, unsigned char);
+unsigned int current_ptr_offset(unsigned char);
 
 
 #endif /* FLASH_H_ */

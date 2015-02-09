@@ -89,6 +89,7 @@
 
 #define	 FLASH_SEG_D				(char *) 0x1800
 #define	 FLASH_SEG_C				(char *) 0x1880
-#define	 FLASH_SEG_B				(char *) 0x1900
+#define	 FLASH_SEG_B				(int *) 0x1900
+#define	 FLASH_SEG_A				(int *) 0x1980
 
 #endif /* DEFINITIONS_H_ */

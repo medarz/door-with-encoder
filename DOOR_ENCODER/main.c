@@ -14,16 +14,20 @@ void config_ports(void);
 void config_interrupts(void);
 uint8_t door_menu(void);
 uint8_t door_set_limits(uint8_t);
+void door_init(void);
 void door_move(void);
+void door_lcd(char *);
 
 uint8_t State, LastState;
 uint8_t StateEnc, LastStateEnc;
 uint8_t StateMenu, bMenu = 0;
-uint8_t bNoMove = 0, bLCDPrint=0, limits = 0, offset;
+uint8_t bNoMove = 0, bLCDPrint=0, limits = 0;
+uint8_t offset_state, offset_ciclos;
 
 uint16_t ciclos, timer_save=0;
 uint16_t upper_limit;
 uint16_t lower_limit;
+uint16_t encoder_position=0;
 
 
 int main(void) {
@@ -45,14 +49,21 @@ int main(void) {
   __no_operation();
   write_flash_c(0xBA,0);
   __no_operation();
-  write_flash_i(1982,1);
+  write_flash_i(1982,384);
+  __no_operation();
+
+  //write_flash_i(195,256);
+  erase_flash((char *) 0x1980);
+  __no_operation();
+  write_flash_segA(1982,0);
+  __no_operation();
+  write_flash_segA(2015,1);
   __no_operation();
 */
+
   config_interrupts();
   lcdclear(2);
-
-  offset = current_ptr_offset();
-
+  door_init();
   State = STATE_INIT;
 
     while (1) {
@@ -123,29 +134,16 @@ __interrupt void TIMER1_A0_ISR(void)
   //P1OUT   ^= LED0;                            // Toggle P1.0
   //TA1CCR0 += 50000;                         // Add Offset to CCR0
 
-  char* limites = FLASH_SEG_B;
-
   // Finite state machine:
 	switch(State)
 	{
 		/**************************************************/
 		case STATE_INIT:
 
-			if(!bLCDPrint)
-			{
-				lcdclear(1);
-				prints("En Operacion");
-				gotoXy(0,1); integerToLcd(ciclos);
-				bLCDPrint = 1;
-			}
+			door_lcd("En Operacion");
 			P1OUT |= (O_DOOR_UP + O_DOOR_DOWN); // 1 - RELAYS OFF
 
-			if( *(limites) == 0xFF)
-			{
-				State = STATE_LIMIT_DEFINITION;
-				bLCDPrint = 0;
-			}
-			//Si mi ultimo estado es que estaba subiendo o bajando, se ha perdido
+		//Si mi ultimo estado es que estaba subiendo o bajando, se ha perdido
 			//la referencia. Hay que configurar límites de nuevo
 			//door_set_limits(REASON_DOOR_LOST);
 
@@ -155,9 +153,7 @@ __interrupt void TIMER1_A0_ISR(void)
 		/**************************************************/
 		case STATE_DOOR_IS_DOWN:
 
-			lcdclear(2);
-			prints("En Operacion");
-			gotoXy(0,1); integerToLcd(ciclos);
+			door_lcd("Puerta Cerrada");
 
 			P1OUT |= (O_DOOR_UP + O_DOOR_DOWN); // 1 - RELAYS OFF
 
@@ -170,8 +166,7 @@ __interrupt void TIMER1_A0_ISR(void)
 		/**************************************************/
 		case STATE_OPENING:
 
-			lcdclear(1);
-			prints("Abriendo Puerta..");
+			door_lcd("Abriendo Puerta");
 
 			P1OUT &= ~(O_DOOR_UP);     // 0 - ON
 			P1OUT |= O_DOOR_DOWN;      // 1 - OFF
@@ -181,13 +176,7 @@ __interrupt void TIMER1_A0_ISR(void)
 		/**************************************************/
 		case STATE_DOOR_IS_UP:
 
-			if( bLCDPrint == 0){
-				lcdclear(2);
-				prints("Puerta Abierta");
-				gotoXy(0,1); integerToLcd(ciclos);
-				bLCDPrint=1;
-			}
-
+			door_lcd("Puerta Abierta");
 
 			P1OUT |= (O_DOOR_UP + O_DOOR_DOWN); // 1 - RELAYS OFF
 			//leer del pot
@@ -226,6 +215,46 @@ __interrupt void TIMER1_A0_ISR(void)
 
 		break;
 	}
+}
+void  door_lcd(char *message)
+{
+	if( bLCDPrint == 0){
+		lcdclear(2);
+		prints(message);
+		gotoXy(0,1); integerToLcd(ciclos);
+		bLCDPrint=1;
+	}
+
+}
+
+void door_init(){
+
+	int  *limites    = FLASH_SEG_A;
+	int  *tot_ciclos = FLASH_SEG_B;
+
+	//Obtener los ciclos que se tienen actualmente
+	offset_ciclos = current_ptr_offset(2);
+	if(offset_ciclos == 0)
+		ciclos = 0;
+	else
+		ciclos = tot_ciclos[offset_ciclos-1];
+
+	//Vemos si ya hay limites guardados
+    if(limites[0] == 0xFFFF && limites[1] == 0xFFFF)
+    {
+    	State = STATE_LIMIT_DEFINITION;
+    }
+    else
+    {
+    	upper_limit = limites[1];
+    	lower_limit = limites[0];
+    }
+
+
+	//Obtener el offset actual
+	offset_state = current_ptr_offset(1);
+
+
 }
 
 uint8_t door_menu(void){
@@ -266,7 +295,7 @@ uint8_t door_set_limits(uint8_t reason){
 	timer_save=0;
 
 	lcdclear(2);
-	prints("Limite Cerrar");
+	prints("Limite Abrir");
 	gotoXy(0,1); prints("SUBIR      BAJAR");
 	door_move();
 	//guardar valor leido por encoder
@@ -274,7 +303,7 @@ uint8_t door_set_limits(uint8_t reason){
 	{
 		bNoMove = 0; timer_save = 0;
 		lcdclear(1);
-		prints("Limite Abrir");
+		prints("Limite Cerrar");
 		door_move();
 		if(!bNoMove) { return 1; }
 	}
@@ -289,7 +318,7 @@ uint8_t door_set_limits(uint8_t reason){
 	prints("Lim. Modificados");
 	__delay_cycles(2000000);
 	bLCDPrint = 0;
-	State = STATE_DOOR_IS_UP;
+	State = STATE_DOOR_IS_DOWN;
 	return 0;
 
 }
@@ -322,10 +351,12 @@ void door_move(){
 #pragma vector=PORT1_VECTOR
 __interrupt void Port_1(void)
 {
-  ciclos++;                            // P1.0 = toggle
   gotoXy(0,1);
   integerToLcd(ciclos);
   P1IFG &= ~BIT1;                          // P1.4 IFG cleared
+
+  //Aqui haremos la maquina de estados del encoder.
+  encoder_position++;
 
   switch(__even_in_range(P1IV,16))
   	{

@@ -81,7 +81,7 @@ void lcdinit(void)
 	P6OUT  &=~EN;
 	lcdcmd(0x28);   //set data length 4 bit 2 line
 	waitlcd(250);
-	lcdcmd(0x0E);   // set display on cursor on blink on
+	lcdcmd(0x0C);   // set display on cursor on blink on
 	waitlcd(250);
 	lcdcmd(0x01); // clear lcd
 	waitlcd(250);
@@ -130,7 +130,7 @@ void integerToLcd(unsigned int integer)
 	thousands = integer / 1000;
     lcdData(thousands + 0x30);
 
-	hundreds = ((integer - thousands*1000)-1) / 100;
+	hundreds = integer  / 100;
 	lcdData( hundreds + 0x30 );
 
 	tens=(integer%100)/10;
