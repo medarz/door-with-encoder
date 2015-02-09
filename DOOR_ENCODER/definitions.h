@@ -79,9 +79,9 @@
 /*------------------------------------------------------------------------------
  * 	MENU RELATED
  *----------------------------------------------------------------------------*/
-#define  REASON_NO_LIMITS	  		0x00
-#define  REASON_MANUAL				0x01
-#define	 REASON_DOOR_LOST			0x02
+#define  REASON_NO_LIMITS	  		0x01
+#define  REASON_MANUAL				0x02
+#define	 REASON_DOOR_LOST			0x03
 
 /*------------------------------------------------------------------------------
  * 	FLASH SEGMENTS

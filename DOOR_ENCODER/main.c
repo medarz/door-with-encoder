@@ -21,7 +21,7 @@ void door_lcd(char *);
 uint8_t State, LastState;
 uint8_t StateEnc, LastStateEnc;
 uint8_t StateMenu, bMenu = 0;
-uint8_t bNoMove = 0, bLCDPrint=0, limits = 0;
+uint8_t bNoMove = 0, bLCDPrint=0, config_limits = 0;
 uint8_t offset_state, offset_ciclos;
 
 uint16_t ciclos, timer_save=0;
@@ -68,16 +68,17 @@ int main(void) {
 
     while (1) {
 
-		if( I_BUTTON_LEFT_PRESSED ){
-			P1OUT |= BIT0;
-			while((P2IN & BIT1)==0);
-   		    ciclos--;
-   		    gotoXy(0,1);
-   		    integerToLcd(ciclos);
-			P1OUT &= ~BIT0;
+		if(config_limits == REASON_NO_LIMITS){
+			config_limits = door_set_limits(REASON_NO_LIMITS);
 		}
-		if(limits==1){
-			limits = door_set_limits(REASON_NO_LIMITS);
+		else if(config_limits == REASON_DOOR_LOST)
+		{
+			config_limits = door_set_limits(REASON_DOOR_LOST);
+		}
+		else if(config_limits == REASON_MANUAL)
+		{
+			door_set_limits(REASON_MANUAL);
+			config_limits = 0;
 		}
 	}
 	return 0;
@@ -132,7 +133,7 @@ void config_interrupts(){
 __interrupt void TIMER1_A0_ISR(void)
 {
   //P1OUT   ^= LED0;                            // Toggle P1.0
-  //TA1CCR0 += 50000;                         // Add Offset to CCR0
+  char * statePtr = FLASH_SEG_D;
 
   // Finite state machine:
 	switch(State)
@@ -141,13 +142,15 @@ __interrupt void TIMER1_A0_ISR(void)
 		case STATE_INIT:
 
 			door_lcd("En Operacion");
-			P1OUT |= (O_DOOR_UP + O_DOOR_DOWN); // 1 - RELAYS OFF
+			PORT_DOOR_RELAYS &= ~(O_DOOR_UP + O_DOOR_DOWN); // 1 - RELAYS OFF
 
-		//Si mi ultimo estado es que estaba subiendo o bajando, se ha perdido
-			//la referencia. Hay que configurar límites de nuevo
-			//door_set_limits(REASON_DOOR_LOST);
+			offset_state = current_ptr_offset(1);
 
 			//TENGO QUE LEER MI ULTIMO ESTADO PARA SABER DONDE ESTOY
+			if    ( statePtr[offset_state - 1 ] == STATE_DOOR_IS_DOWN) 		 State = STATE_DOOR_IS_DOWN;
+			else if(statePtr[offset_state - 1 ] == STATE_DOOR_IS_UP )  		 State = STATE_DOOR_IS_UP;
+			else	config_limits = REASON_DOOR_LOST;
+
 
 		break;
 		/**************************************************/
@@ -155,12 +158,12 @@ __interrupt void TIMER1_A0_ISR(void)
 
 			door_lcd("Puerta Cerrada");
 
-			P1OUT |= (O_DOOR_UP + O_DOOR_DOWN); // 1 - RELAYS OFF
+			PORT_DOOR_RELAYS &= ~(O_DOOR_UP + O_DOOR_DOWN);
 
-			if( P1IN & I_BUTTON )
+			/*if( P1IN & I_BUTTON )
 			{
 				State = STATE_OPENING;
-			}
+			}*/
 
 		break;
 		/**************************************************/
@@ -168,8 +171,8 @@ __interrupt void TIMER1_A0_ISR(void)
 
 			door_lcd("Abriendo Puerta");
 
-			P1OUT &= ~(O_DOOR_UP);     // 0 - ON
-			P1OUT |= O_DOOR_DOWN;      // 1 - OFF
+			PORT_DOOR_RELAYS |= (O_DOOR_UP);
+			PORT_DOOR_RELAYS &= ~O_DOOR_DOWN;
 
 
 		break;
@@ -178,36 +181,32 @@ __interrupt void TIMER1_A0_ISR(void)
 
 			door_lcd("Puerta Abierta");
 
-			P1OUT |= (O_DOOR_UP + O_DOOR_DOWN); // 1 - RELAYS OFF
+			PORT_DOOR_RELAYS &= ~(O_DOOR_UP + O_DOOR_DOWN);
 			//leer del pot
 		break;
 
 		/**************************************************/
 		case STATE_CLOSING:
 
-			lcdclear(1);
-			prints("Cerrando puerta..");
+			door_lcd("Cerrando puerta..");
 
-			P1OUT &= ~(O_DOOR_DOWN); 	// 0 - ON
-			P1OUT |= O_DOOR_UP;   // 1 - OFF
+			PORT_DOOR_RELAYS |= (O_DOOR_DOWN);
+			PORT_DOOR_RELAYS &= ~O_DOOR_UP;
 
 		break;
 		/**************************************************/
 		case STATE_MENU:
-			P1OUT |= (O_DOOR_UP + O_DOOR_DOWN); // 1 - RELAYS OFF
+			PORT_DOOR_RELAYS &= ~(O_DOOR_UP + O_DOOR_DOWN);
 			bMenu = door_menu();
 		break;
 		/**************************************************/
 		case STATE_LIMIT_DEFINITION:
-
-			 limits=1;
 			 timer_save++;
-
 		break;
 		/**************************************************/
 		case STATE_ESTOP:
 
-			P1OUT |= (O_DOOR_UP + O_DOOR_DOWN); // 1 - RELAYS OFF
+			PORT_DOOR_RELAYS &= ~(O_DOOR_UP + O_DOOR_DOWN);
 			if( P1IN & I_EMERGENCY_STOP)
 			{
 				State = LastState;
@@ -242,19 +241,13 @@ void door_init(){
 	//Vemos si ya hay limites guardados
     if(limites[0] == 0xFFFF && limites[1] == 0xFFFF)
     {
-    	State = STATE_LIMIT_DEFINITION;
+    	config_limits = REASON_NO_LIMITS;
     }
     else
     {
     	upper_limit = limites[1];
     	lower_limit = limites[0];
     }
-
-
-	//Obtener el offset actual
-	offset_state = current_ptr_offset(1);
-
-
 }
 
 uint8_t door_menu(void){
@@ -268,6 +261,8 @@ uint8_t door_menu(void){
 uint8_t door_set_limits(uint8_t reason){
 
 	lcdclear(2);
+
+	State = STATE_LIMIT_DEFINITION;
 
 	switch (reason){
 		case REASON_NO_LIMITS:
@@ -305,11 +300,11 @@ uint8_t door_set_limits(uint8_t reason){
 		lcdclear(1);
 		prints("Limite Cerrar");
 		door_move();
-		if(!bNoMove) { return 1; }
+		if(!bNoMove) { return reason; }
 	}
 	else
 	{
-		return 1;
+		return reason;
 	}
 
     //guardar valor leido por encoder
