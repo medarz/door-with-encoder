@@ -10,6 +10,7 @@
 #include "lcd.h"
 #include "flash.h"
 
+void hand(void);
 void config_ports(void);
 void config_interrupts(void);
 uint8_t door_menu(void);
@@ -20,7 +21,7 @@ void door_lcd(char *);
 void door_save_state(void);
 
 uint8_t State=0, NextState=0;
-uint8_t StateEnc, LastStateEnc;
+uint8_t LastStateEnc;
 uint8_t StateMenu, bMenu = 0;
 uint8_t bNoMove = 0, bLCDPrint=0, bSaveState=0, config_limits = 0;
 uint8_t offset_state, offset_ciclos;
@@ -28,10 +29,13 @@ uint8_t offset_state, offset_ciclos;
 uint16_t ciclos, timer_save=0;
 uint16_t upper_limit;
 uint16_t lower_limit;
-uint16_t encoder_position=0;
+int16_t encoder_position=0;
 
+static int bit_test;
 
 int main(void) {
+
+  char  *MemState    = FLASH_SEG_D;
 
   ciclos = 0;
   WDTCTL = WDTPW + WDTHOLD;
@@ -71,8 +75,11 @@ int main(void) {
 	   if(bSaveState && State != STATE_INIT && NextState == State)
 	   {
 		  bSaveState = 0;
-		  write_flash_c(State, offset_state);
-		  offset_state++;
+		  if(MemState[offset_state-1] != State)
+		  {
+			  write_flash_c(State, offset_state);
+			  offset_state++;
+		  }
 	   }
 
 	}
@@ -115,9 +122,12 @@ void config_interrupts(){
 
 	  //TBCTL = TBSSEL_1 + MC_1 + ID_3;         // SMCLK, contmode, clear TAR
 
-	  P1IES |=   I_CHAN1 + I_CHAN2;                             // Hi -> Lo edge
+	  P1IES &= ~(I_CHAN1 + I_CHAN2);                             // Lo->Hi edge
 	  P1IFG &= ~(I_CHAN1 + I_CHAN2);                           // IFG cleared
 	  P1IE  |=   I_CHAN1 + I_CHAN2;                             // Interrupt enabled
+
+	  QUAD_IE|= QUAD_A | QUAD_B;
+
 
 }
 
@@ -162,7 +172,7 @@ __interrupt void TIMER1_A0_ISR(void)
 
 			door_lcd("Puerta Cerrada");
 
-			PORT_DOOR_RELAYS &= ~(O_DOOR_UP + O_DOOR_DOWN);
+			//PORT_DOOR_RELAYS &= ~(O_DOOR_UP + O_DOOR_DOWN);
 
 			/*if( P1IN & I_BUTTON )
 			{
@@ -239,6 +249,9 @@ void door_init(){
 
 	int  *limites    = FLASH_SEG_A;
 	int  *tot_ciclos = FLASH_SEG_B;
+
+	//La puerta no esta en movimiento.
+	LastStateEnc = STATE_S1;
 
 	//Obtener los ciclos que se tienen actualmente
 	offset_ciclos = current_ptr_offset(2);
@@ -350,30 +363,60 @@ void door_move(){
 	}while( timer_save < WAIT_FOR_LIMIT_TIMEOUT );
 }
 
-// Port 1 interrupt service routine
-#pragma vector=PORT1_VECTOR
-__interrupt void Port_1(void)
+
+
+
+#pragma vector=QUAD_VECTOR
+__interrupt void _quad_change( void )
 {
-  gotoXy(0,1);
-  integerToLcd(ciclos);
-  P1IFG &= ~BIT1;                          // P1.4 IFG cleared
+    if( QUAD_IE & QUAD_A )
+    {
+        if( QUAD_PORT & QUAD_B )
+        {
+            bit_test= 1;
+            QUAD_IES|= QUAD_B;
+        }
+        else
+        {
+            bit_test= -1;
+            QUAD_IES&= ~QUAD_B;
+        }
+        if( QUAD_IES & QUAD_A )
+        	encoder_position+= bit_test;
+        else
+        	encoder_position-= bit_test;
+        QUAD_IE&= ~QUAD_A;
+        QUAD_IE|= QUAD_B;
+    }
+    else //if( QUAD_IE & QUAD_B )
+    {
+        if( QUAD_PORT & QUAD_A )
+        {
+            bit_test= -1;
+            QUAD_IES|= QUAD_A;
+        }
+        else
+        {
+            bit_test= 1;
+            QUAD_IES&= ~QUAD_A;
+        }
+        if( QUAD_IES & QUAD_B )
+        	encoder_position+= bit_test;
+        else
+        	encoder_position-= bit_test;
+        QUAD_IE&= ~QUAD_B;
+        QUAD_IE|= QUAD_A;
+    }
+    QUAD_IFG&= ~( QUAD_A | QUAD_B );
 
-  //Aqui haremos la maquina de estados del encoder.
-  encoder_position++;
-
-  switch(__even_in_range(P1IV,16))
-  	{
-		case   0:  break;  //  No  Interrupt
-		case   2:  break;  //  P1.0
-		case   4:  break;  //  P1.1
-		case   6:  break;  //  P1.2
-		case   8:  break;  //  P1.3
-		case   10: break;  //  P1.4
-		case   12: break;  //  P1.5
-		case   14: break;  //  P1.6
-		case   16: break;  //  P1.7
-  	}
-
+    if (encoder_position>90)
+    {
+    	PORT_DOOR_RELAYS |= O_DOOR_UP;      // 1 - On
+    }
+    else
+    {
+    	PORT_DOOR_RELAYS &= ~(O_DOOR_UP);     // 0 - Off
+    }
 }
 
 #pragma vector=TIMERB1_VECTOR

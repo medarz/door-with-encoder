@@ -37,7 +37,8 @@
 
 #define 	I_CHAN1					BIT2
 #define		I_CHAN2					BIT3
-
+#define 	REA 					BIT2
+#define 	REB 					BIT3
 /*------------------------------------------------------------------------------
  * OUTPUTS
  *----------------------------------------------------------------------------*/
@@ -68,10 +69,9 @@
 /*------------------------------------------------------------------------------
  * STATE MACHINE ENCODER
  *----------------------------------------------------------------------------*/
-#define  STATE_STILL 		    	0x11
-#define  STATE_MOVE_LEFT			0x10
-#define  STATE_MOVE_RIGHT 	  		0x01
-#define  STATE_INCREASE		  		0x00
+#define  STATE_S1	 		    	0x03
+#define  STATE_S2					0x02
+#define  STATE_S3			  		0x01
 
 /*------------------------------------------------------------------------------
  * 	TIMERS
@@ -94,5 +94,14 @@
 #define	 FLASH_SEG_C				(char *) 0x1880
 #define	 FLASH_SEG_B				(int *) 0x1900
 #define	 FLASH_SEG_A				(int *) 0x1980
+
+#define QUAD_VECTOR PORT1_VECTOR
+#define QUAD_A  BIT2
+#define QUAD_B  BIT3
+#define QUAD_PORT P1IN
+#define QUAD_IE   P1IE
+#define QUAD_IES  P1IES
+#define QUAD_IFG  P1IFG
+
 
 #endif /* DEFINITIONS_H_ */

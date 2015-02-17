@@ -120,7 +120,7 @@ void gotoXy(unsigned char  x,unsigned char y)
 	  }
 
 }
-void integerToLcd(unsigned int integer)
+void integerToLcd(int integer)
 {
 	unsigned char tenthousands,thousands,hundreds,tens,ones;
 

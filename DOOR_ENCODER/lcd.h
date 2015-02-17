@@ -16,7 +16,7 @@
 void waitlcd(unsigned int x);
 void lcdinit();
 void lcdclear(unsigned char x);
-void integerToLcd(unsigned int integer );
+void integerToLcd(int integer );
 void lcdData(unsigned char l);
 void prints(char *s);
 void gotoXy(unsigned char  x,unsigned char y);
