@@ -10,6 +10,16 @@
 #include "lcd.h"
 #include "flash.h"
 
+
+enum
+{
+  Q0, // 00, A low & B low
+  Q1, // 01, A low & B high
+  Q2, // 11, A high & B high
+  Q3, // 10, A high & B low
+} oldstate, newstate;
+
+
 void hand(void);
 void config_ports(void);
 void config_interrupts(void);
@@ -19,6 +29,10 @@ void door_init(void);
 void door_move(void);
 void door_lcd(char *);
 void door_save_state(void);
+
+int get_AB_state(void);
+void clear_AB_ifg(void);
+void errow(void);
 
 uint8_t State=0, NextState=0;
 uint8_t LastStateEnc;
@@ -30,8 +44,6 @@ uint16_t ciclos, timer_save=0;
 uint16_t upper_limit;
 uint16_t lower_limit;
 int16_t encoder_position=0;
-
-static int bit_test;
 
 int main(void) {
 
@@ -53,6 +65,7 @@ int main(void) {
   lcdclear(2);
   door_init();
   //erase_flash(FLASH_SEG_D);
+  oldstate = get_AB_state();
   NextState = STATE_INIT;
   __enable_interrupt();
 
@@ -122,12 +135,9 @@ void config_interrupts(){
 
 	  //TBCTL = TBSSEL_1 + MC_1 + ID_3;         // SMCLK, contmode, clear TAR
 
-	  P1IES &= ~(I_CHAN1 + I_CHAN2);                             // Lo->Hi edge
+	  P1IES |= (I_CHAN1 + I_CHAN2);                             // Hi->Low edge
 	  P1IFG &= ~(I_CHAN1 + I_CHAN2);                           // IFG cleared
 	  P1IE  |=   I_CHAN1 + I_CHAN2;                             // Interrupt enabled
-
-	  QUAD_IE|= QUAD_A | QUAD_B;
-
 
 }
 
@@ -363,61 +373,94 @@ void door_move(){
 	}while( timer_save < WAIT_FOR_LIMIT_TIMEOUT );
 }
 
+int get_AB_state(){
 
+	uint8_t ChanState;
+	ChanState = P1IN & 0x0C;
 
+	if(ChanState == 0x00)
+	{ P1IES = 0x00; return Q0; }
+	else if(ChanState == 0x04)
+			return Q1;
+	else if(ChanState == 0x0C)
+	{ P1IES |= (I_CHAN1 + I_CHAN2);	return Q2;}
+	else if(ChanState == 0x08)
+			return Q3;
 
-#pragma vector=QUAD_VECTOR
-__interrupt void _quad_change( void )
-{
-    if( QUAD_IE & QUAD_A )
-    {
-        if( QUAD_PORT & QUAD_B )
-        {
-            bit_test= 1;
-            QUAD_IES|= QUAD_B;
-        }
-        else
-        {
-            bit_test= -1;
-            QUAD_IES&= ~QUAD_B;
-        }
-        if( QUAD_IES & QUAD_A )
-        	encoder_position+= bit_test;
-        else
-        	encoder_position-= bit_test;
-        QUAD_IE&= ~QUAD_A;
-        QUAD_IE|= QUAD_B;
-    }
-    else //if( QUAD_IE & QUAD_B )
-    {
-        if( QUAD_PORT & QUAD_A )
-        {
-            bit_test= -1;
-            QUAD_IES|= QUAD_A;
-        }
-        else
-        {
-            bit_test= 1;
-            QUAD_IES&= ~QUAD_A;
-        }
-        if( QUAD_IES & QUAD_B )
-        	encoder_position+= bit_test;
-        else
-        	encoder_position-= bit_test;
-        QUAD_IE&= ~QUAD_B;
-        QUAD_IE|= QUAD_A;
-    }
-    QUAD_IFG&= ~( QUAD_A | QUAD_B );
-
-    if (encoder_position>90)
-    {
-    	PORT_DOOR_RELAYS |= O_DOOR_UP;      // 1 - On
-    }
-    else
-    {
-    	PORT_DOOR_RELAYS &= ~(O_DOOR_UP);     // 0 - Off
-    }
+	return Q2;
 }
+
+void clear_AB_ifg(){
+
+	P1IFG = 0x00;
+}
+
+void errow(){
+
+	//algo paso!
+	__no_operation();
+}
+
+
+#pragma vector=PORT1_VECTOR
+__interrupt void Port_1(void)
+{
+	__no_operation();
+	newstate = get_AB_state();
+	clear_AB_ifg();
+	switch (oldstate)
+	{
+	  case Q0:
+	    switch (newstate)
+	    {
+	      case Q1:
+	        {encoder_position++; break;}
+	      case Q3:
+	        {encoder_position--; break;}
+	      default:
+	        {errow(); break;}
+	    }
+	    break;
+	  case Q1:
+	    switch (newstate)
+	    {
+	      case Q2:
+	        {encoder_position++; break;}
+	      case Q0:
+	        {encoder_position--; break;}
+	      default:
+	        {errow(); break;}
+	    }
+	    break;
+	  case Q2:
+	    switch (newstate)
+	    {
+	      case Q3:
+	        {encoder_position++; break;}
+	      case Q1:
+	        {encoder_position--; break;}
+	      default:
+	        {errow(); break;}
+	    }
+	    break;
+	  case Q3:
+	    switch (newstate)
+	    {
+	      case Q0:
+	        {encoder_position++; break;}
+	      case Q2:
+	        {encoder_position--; break;}
+	      default:
+	        {errow(); break;}
+	    }
+	    break;
+	}
+	oldstate = newstate;
+
+}
+
+
+
 
 #pragma vector=TIMERB1_VECTOR
 __interrupt void TIMER1_ISR(void)

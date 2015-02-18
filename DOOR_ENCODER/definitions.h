@@ -95,13 +95,5 @@
 #define	 FLASH_SEG_B				(int *) 0x1900
 #define	 FLASH_SEG_A				(int *) 0x1980
 
-#define QUAD_VECTOR PORT1_VECTOR
-#define QUAD_A  BIT2
-#define QUAD_B  BIT3
-#define QUAD_PORT P1IN
-#define QUAD_IE   P1IE
-#define QUAD_IES  P1IES
-#define QUAD_IFG  P1IFG
-
 
 #endif /* DEFINITIONS_H_ */
