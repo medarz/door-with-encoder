@@ -28,17 +28,19 @@
 #define 	I_BUTTON_RIGHT			BIT1
 #define		I_BUTTON_RIGHT_PRESSED  (P1IN & BIT1) == 0
 
-// ---- PORT 2 ----
 #define 	I_BUTTON_LEFT			BIT1
 #define		I_BUTTON_LEFT_PRESSED   (P2IN & BIT1) == 0
 
-#define		I_BUTTON				BIT3
+#define 	I_BUTTON_CENTER			BIT6
+#define		I_BUTTON_CENTER_PRESSED (P2IN & BIT6) == 0
+
+#define 	I_BUTTON				BIT1
+#define		I_BUTTON_PRESSED   		(P2IN & BIT1) == 0
+
 #define		I_EMERGENCY_STOP		BIT4
 
 #define 	I_CHAN1					BIT2
 #define		I_CHAN2					BIT3
-#define 	REA 					BIT2
-#define 	REB 					BIT3
 /*------------------------------------------------------------------------------
  * OUTPUTS
  *----------------------------------------------------------------------------*/

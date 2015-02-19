@@ -10,7 +10,6 @@
 #include "lcd.h"
 #include "flash.h"
 
-
 enum
 {
   Q0, // 00, A low & B low
@@ -25,6 +24,8 @@ void config_ports(void);
 void config_interrupts(void);
 uint8_t door_menu(void);
 uint8_t door_set_limits(uint8_t);
+uint8_t door_save_limits(int,int);
+
 void door_init(void);
 void door_move(void);
 void door_lcd(char *);
@@ -41,9 +42,9 @@ uint8_t bNoMove = 0, bLCDPrint=0, bSaveState=0, config_limits = 0;
 uint8_t offset_state, offset_ciclos;
 
 uint16_t ciclos, timer_save=0;
-uint16_t upper_limit;
-uint16_t lower_limit;
-int16_t encoder_position=0;
+int encoder_position=0;
+int upper_limit;
+int lower_limit;
 
 int main(void) {
 
@@ -83,8 +84,6 @@ int main(void) {
 			door_set_limits(REASON_MANUAL);
 			config_limits = 0;
 		}
-	   //Hay una transicion de estado.
-
 	   if(bSaveState && State != STATE_INIT && NextState == State)
 	   {
 		  bSaveState = 0;
@@ -121,9 +120,9 @@ void config_ports(){
 	  P1REN |= I_BUTTON_RIGHT + I_CHAN1 + I_CHAN2;                            // Enable internal resistance
 	  P1OUT |= I_BUTTON_RIGHT + I_CHAN1 + I_CHAN2;                            // Set as pull-Up resistance
 
-	  P2DIR &= ~ (I_BUTTON_LEFT);
-	  P2REN |= I_BUTTON_LEFT;                            // Enable internal resistance
-	  P2OUT |= I_BUTTON_LEFT;                            // Set as pull-Up resistance
+	  P2DIR &= ~ (I_BUTTON_LEFT + I_BUTTON_CENTER);
+	  P2REN |= I_BUTTON_LEFT + I_BUTTON_CENTER;                            // Enable internal resistance
+	  P2OUT |= I_BUTTON_LEFT + I_BUTTON_CENTER;                            // Set as pull-Up resistance
 
 }
 
@@ -151,7 +150,14 @@ __interrupt void TIMER1_A0_ISR(void)
 
 	if(NextState != State )
 	{
-	  if(offset_state>=256) offset_state = 0;
+	  if(offset_state>=256)
+	  {
+		  erase_flash(FLASH_SEG_D);
+		  offset_state = 0;
+	  }
+	  else if( offset_state == 128){
+		  erase_flash(FLASH_SEG_C);
+	  }
 	  bLCDPrint = 1; bSaveState = 1;
 	  State = NextState;
 	}
@@ -182,12 +188,12 @@ __interrupt void TIMER1_A0_ISR(void)
 
 			door_lcd("Puerta Cerrada");
 
-			//PORT_DOOR_RELAYS &= ~(O_DOOR_UP + O_DOOR_DOWN);
+			PORT_DOOR_RELAYS &= ~(O_DOOR_UP + O_DOOR_DOWN);
 
-			/*if( P1IN & I_BUTTON )
+			if( I_BUTTON_PRESSED )
 			{
 				NextState = STATE_OPENING;
-			}*/
+			}
 
 		break;
 		/**************************************************/
@@ -198,6 +204,9 @@ __interrupt void TIMER1_A0_ISR(void)
 			PORT_DOOR_RELAYS |= (O_DOOR_UP);
 			PORT_DOOR_RELAYS &= ~O_DOOR_DOWN;
 
+			if(encoder_position >= upper_limit){
+				NextState = STATE_DOOR_IS_UP;
+			}
 
 		break;
 		/**************************************************/
@@ -206,7 +215,11 @@ __interrupt void TIMER1_A0_ISR(void)
 			door_lcd("Puerta Abierta");
 
 			PORT_DOOR_RELAYS &= ~(O_DOOR_UP + O_DOOR_DOWN);
-			//leer del pot
+
+			if( I_BUTTON_PRESSED )
+			{
+				NextState = STATE_CLOSING;
+			}
 		break;
 
 		/**************************************************/
@@ -217,15 +230,22 @@ __interrupt void TIMER1_A0_ISR(void)
 			PORT_DOOR_RELAYS |= (O_DOOR_DOWN);
 			PORT_DOOR_RELAYS &= ~O_DOOR_UP;
 
+			if (encoder_position <= lower_limit ){
+				NextState = STATE_DOOR_IS_DOWN;
+			}
+
 		break;
 		/**************************************************/
 		case STATE_MENU:
+
 			PORT_DOOR_RELAYS &= ~(O_DOOR_UP + O_DOOR_DOWN);
 			bMenu = door_menu();
+
 		break;
 		/**************************************************/
 		case STATE_LIMIT_DEFINITION:
-			 timer_save++;
+
+
 		break;
 		/**************************************************/
 		case STATE_ESTOP:
@@ -271,7 +291,7 @@ void door_init(){
 		ciclos = tot_ciclos[offset_ciclos-1];
 
 	//Vemos si ya hay limites guardados
-    if(limites[0] == 0xFFFF && limites[1] == 0xFFFF)
+    if(( limites[0] == 0xFFFF && limites[1] == 0xFFFF))
     {
     	config_limits = REASON_NO_LIMITS;
     }
@@ -292,9 +312,11 @@ uint8_t door_menu(void){
 
 uint8_t door_set_limits(uint8_t reason){
 
+	int upper, lower;
 	lcdclear(2);
 
 	NextState = STATE_LIMIT_DEFINITION;
+	TA1CCTL0 &= ~CCIE;
 
 	switch (reason){
 		case REASON_NO_LIMITS:
@@ -307,11 +329,12 @@ uint8_t door_set_limits(uint8_t reason){
 		break;
 		case REASON_MANUAL:
 			prints("Cambiar limites?");
-			prints("SI            NO");
+			gotoXy(0,1); prints("SI            NO");
 			do{
 				if(I_BUTTON_RIGHT_PRESSED)
 				{
 					while(I_BUTTON_RIGHT_PRESSED);
+					TA1CCTL0 |= CCIE;
 					return 0;
 				}
 			}while(!(I_BUTTON_LEFT_PRESSED));
@@ -325,28 +348,47 @@ uint8_t door_set_limits(uint8_t reason){
 	prints("Limite Abrir");
 	gotoXy(0,1); prints("SUBIR      BAJAR");
 	door_move();
-	//guardar valor leido por encoder
+
 	if(bNoMove)
 	{
 		bNoMove = 0; timer_save = 0;
 		lcdclear(1);
+		//guardar valor leido por encoder
+		upper = encoder_position;
 		prints("Limite Cerrar");
 		door_move();
-		if(!bNoMove) { return reason; }
+		if(!bNoMove) {
+			TA1CCTL0 |= CCIE;
+			return reason;
+		}
 	}
 	else
 	{
+		TA1CCTL0 |= CCIE;
 		return reason;
 	}
 
     //guardar valor leido por encoder
-
+	lower = encoder_position;
+	door_save_limits(upper, lower);
 	lcdclear(2);
 	prints("Lim. Modificados");
+
 	__delay_cycles(2000000);
 	NextState = STATE_DOOR_IS_DOWN;
+	TA1CCTL0 |= CCIE;
+
 	return 0;
 
+}
+
+uint8_t door_save_limits(int upper, int lower){
+
+	erase_flash((char *) 0x1980);
+	write_flash_segA(lower, 0);
+	write_flash_segA(upper, 1);
+
+	return 1;
 }
 
 void door_move(){
@@ -370,7 +412,10 @@ void door_move(){
 			LED1_OFF;
 			PORT_DOOR_RELAYS &= ~(O_DOOR_UP + O_DOOR_DOWN);     // 0 - ON
 		}
-	}while( timer_save < WAIT_FOR_LIMIT_TIMEOUT );
+	}while(!(I_BUTTON_CENTER_PRESSED));
+	__delay_cycles(5000000);
+
+	while(I_BUTTON_CENTER_PRESSED);
 }
 
 int get_AB_state(){
@@ -379,13 +424,19 @@ int get_AB_state(){
 	ChanState = P1IN & 0x0C;
 
 	if(ChanState == 0x00)
-	{ P1IES = 0x00; return Q0; }
+	{
+		P1IES = 0x00;
+		return Q0;
+	}
 	else if(ChanState == 0x04)
-			return Q1;
+		return Q1;
 	else if(ChanState == 0x0C)
-	{ P1IES |= (I_CHAN1 + I_CHAN2);	return Q2;}
+	{
+		P1IES |= (I_CHAN1 + I_CHAN2);
+		return Q2;
+	}
 	else if(ChanState == 0x08)
-			return Q3;
+		return Q3;
 
 	return Q2;
 }
@@ -405,7 +456,6 @@ void errow(){
 #pragma vector=PORT1_VECTOR
 __interrupt void Port_1(void)
 {
-	__no_operation();
 	newstate = get_AB_state();
 	clear_AB_ifg();
 	switch (oldstate)
@@ -455,8 +505,8 @@ __interrupt void Port_1(void)
 	    }
 	    break;
 	}
-	oldstate = newstate;
 
+	oldstate = newstate;
 }
 
 
