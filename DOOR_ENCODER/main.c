@@ -66,6 +66,7 @@ int main(void) {
   lcdclear(2);
   door_init();
   //erase_flash(FLASH_SEG_D);
+
   oldstate = get_AB_state();
   NextState = STATE_INIT;
   __enable_interrupt();
@@ -81,13 +82,35 @@ int main(void) {
 		}
 		else if(config_limits == REASON_MANUAL)
 		{
-			door_set_limits(REASON_MANUAL);
+			config_limits = door_set_limits(REASON_MANUAL);
+			if( config_limits == 2 )
+			{
+			 //Usuario no quiso modificar la puerta.. hay que ver donde estamos
+			  NextState = STATE_INIT;
+			}
 			config_limits = 0;
 		}
 	   if(bSaveState && State != STATE_INIT && NextState == State)
 	   {
 		  bSaveState = 0;
-		  if(MemState[offset_state-1] != State)
+
+		  if(offset_state >= 256)
+		  {
+			  offset_state = 0;
+		  }
+		  else if( offset_state == 128)
+		  {
+			  __no_operation();
+			  erase_flash(FLASH_SEG_C);
+		  }
+
+		  if(offset_state == 0)
+		  {
+			  erase_flash(FLASH_SEG_D);
+			  write_flash_c(State, offset_state);
+			  offset_state++;
+		  }
+		  else if(MemState[offset_state-1] != State)
 		  {
 			  write_flash_c(State, offset_state);
 			  offset_state++;
@@ -150,14 +173,7 @@ __interrupt void TIMER1_A0_ISR(void)
 
 	if(NextState != State )
 	{
-	  if(offset_state>=256)
-	  {
-		  erase_flash(FLASH_SEG_D);
-		  offset_state = 0;
-	  }
-	  else if( offset_state == 128){
-		  erase_flash(FLASH_SEG_C);
-	  }
+
 	  bLCDPrint = 1; bSaveState = 1;
 	  State = NextState;
 	}
@@ -180,7 +196,7 @@ __interrupt void TIMER1_A0_ISR(void)
 				else
 					LastSavedState = statePtr[offset_state-1];
 
-				if     ( LastSavedState == STATE_DOOR_IS_DOWN)
+				if(LastSavedState == STATE_DOOR_IS_DOWN)
 				{
 					NextState = STATE_DOOR_IS_DOWN;
 					encoder_position = lower_limit;
@@ -255,6 +271,17 @@ __interrupt void TIMER1_A0_ISR(void)
 			PORT_DOOR_RELAYS &= ~O_DOOR_UP;
 
 			if (encoder_position <= lower_limit ){
+
+				ciclos++;
+				offset_ciclos++;
+				if(offset_ciclos==64)
+				{
+					__no_operation();
+					offset_ciclos=1; // se deja en 1 por la resta que sigue
+					erase_flash((char *) 0x1900);
+				}
+				write_flash_i(ciclos,offset_ciclos-1);
+
 				NextState = STATE_DOOR_IS_DOWN;
 			}
 
@@ -282,10 +309,6 @@ __interrupt void TIMER1_A0_ISR(void)
 
 		break;
 	}
-}
-
-void save_door_state(void){
-
 }
 
 void  door_lcd(char *message)
@@ -359,7 +382,7 @@ uint8_t door_set_limits(uint8_t reason){
 				{
 					while(I_BUTTON_RIGHT_PRESSED);
 					TA1CCTL0 |= CCIE;
-					return 0;
+					return 2;
 				}
 			}while(!(I_BUTTON_LEFT_PRESSED));
 		break;
@@ -394,12 +417,21 @@ uint8_t door_set_limits(uint8_t reason){
 
     //guardar valor leido por encoder
 	lower = encoder_position;
-	door_save_limits(upper, lower);
-	lcdclear(2);
-	prints("Lim. Modificados");
+	if (upper > lower)
+	{
+		door_save_limits(upper, lower);
+		lcdclear(2);
+		prints("Lim. Modificados");
+		NextState = STATE_DOOR_IS_DOWN;
+	}
+	else
+	{
+		lcdclear(2);
+		prints("Valores incorr.");
+		NextState = STATE_INIT;
+	}
 
 	__delay_cycles(2000000);
-	NextState = STATE_DOOR_IS_DOWN;
 	TA1CCTL0 |= CCIE;
 
 	return 0;
