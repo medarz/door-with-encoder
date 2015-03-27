@@ -34,8 +34,8 @@
 #define 	I_BUTTON_CENTER			BIT6
 #define		I_BUTTON_CENTER_PRESSED (P2IN & BIT6) == 0
 
-#define 	I_BUTTON				BIT1
-#define		I_BUTTON_PRESSED   		(P2IN & BIT1) == 0
+#define 	I_BUTTON				BIT0
+#define		I_BUTTON_PRESSED   		(P2IN & BIT0) == 0
 
 #define		I_EMERGENCY_STOP		BIT4
 
@@ -44,8 +44,8 @@
 /*------------------------------------------------------------------------------
  * OUTPUTS
  *----------------------------------------------------------------------------*/
-#define		O_DOOR_DOWN				BIT1
-#define		O_DOOR_UP				BIT0
+#define		O_DOOR_DOWN				BIT0
+#define		O_DOOR_UP				BIT1
 
 #define     LED0					BIT0
 #define 	LED0_ON					PORT_LED0 |= LED0

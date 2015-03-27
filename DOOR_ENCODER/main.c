@@ -120,9 +120,9 @@ void config_ports(){
 	  P1REN |= I_BUTTON_RIGHT + I_CHAN1 + I_CHAN2;                            // Enable internal resistance
 	  P1OUT |= I_BUTTON_RIGHT + I_CHAN1 + I_CHAN2;                            // Set as pull-Up resistance
 
-	  P2DIR &= ~ (I_BUTTON_LEFT + I_BUTTON_CENTER);
-	  P2REN |= I_BUTTON_LEFT + I_BUTTON_CENTER;                            // Enable internal resistance
-	  P2OUT |= I_BUTTON_LEFT + I_BUTTON_CENTER;                            // Set as pull-Up resistance
+	  P2DIR &= ~ (I_BUTTON_LEFT + I_BUTTON_CENTER + I_BUTTON);
+	  P2REN |= I_BUTTON_LEFT + I_BUTTON_CENTER + I_BUTTON;                            // Enable internal resistance
+	  P2OUT |= I_BUTTON_LEFT + I_BUTTON_CENTER + I_BUTTON;                            // Set as pull-Up resistance
 
 }
 
@@ -146,7 +146,7 @@ __interrupt void TIMER1_A0_ISR(void)
 {
   //P1OUT   ^= LED0;                            // Toggle P1.0
   char * statePtr = FLASH_SEG_D;
-
+  uint8_t LastSavedState;
 
 	if(NextState != State )
 	{
@@ -172,12 +172,28 @@ __interrupt void TIMER1_A0_ISR(void)
 
 			offset_state = current_ptr_offset(1);
 
-			if(offset_state>0)
+			if(offset_state>0 || statePtr[255] != 0xFF )
 			{
 				//TENGO QUE LEER MI ULTIMO ESTADO PARA SABER DONDE ESTOY
-				if    ( statePtr[offset_state - 1 ] == STATE_DOOR_IS_DOWN) 		 NextState = STATE_DOOR_IS_DOWN;
-				else if(statePtr[offset_state - 1 ] == STATE_DOOR_IS_UP )  		 NextState = STATE_DOOR_IS_UP;
-				else config_limits = REASON_DOOR_LOST;
+				if(statePtr[255]!= 0xFF && offset_state==0)
+					LastSavedState = statePtr[255];
+				else
+					LastSavedState = statePtr[offset_state-1];
+
+				if     ( LastSavedState == STATE_DOOR_IS_DOWN)
+				{
+					NextState = STATE_DOOR_IS_DOWN;
+					encoder_position = lower_limit;
+				}
+				else if(LastSavedState == STATE_DOOR_IS_UP )
+				{
+					NextState = STATE_DOOR_IS_UP;
+					encoder_position = upper_limit;
+				}
+				else
+				{
+					config_limits = REASON_DOOR_LOST;
+				}
 			}
 			else
 				config_limits = REASON_DOOR_LOST;
@@ -194,6 +210,10 @@ __interrupt void TIMER1_A0_ISR(void)
 			{
 				NextState = STATE_OPENING;
 			}
+			if( I_BUTTON_CENTER_PRESSED )
+			{
+				config_limits = REASON_MANUAL;
+			}
 
 		break;
 		/**************************************************/
@@ -205,7 +225,7 @@ __interrupt void TIMER1_A0_ISR(void)
 			PORT_DOOR_RELAYS &= ~O_DOOR_DOWN;
 
 			if(encoder_position >= upper_limit){
-				NextState = STATE_DOOR_IS_UP;
+			   NextState = STATE_DOOR_IS_UP;
 			}
 
 		break;
@@ -219,6 +239,10 @@ __interrupt void TIMER1_A0_ISR(void)
 			if( I_BUTTON_PRESSED )
 			{
 				NextState = STATE_CLOSING;
+			}
+			if( I_BUTTON_CENTER_PRESSED )
+			{
+				config_limits = REASON_MANUAL;
 			}
 		break;
 
@@ -321,11 +345,11 @@ uint8_t door_set_limits(uint8_t reason){
 	switch (reason){
 		case REASON_NO_LIMITS:
 			prints("No hay limites."); gotoXy(0,1); prints("OK");
-			while(!(I_BUTTON_LEFT_PRESSED));
+			while(!(I_BUTTON_CENTER_PRESSED));
 		break;
 		case REASON_DOOR_LOST:
 			prints("Redefinir ref."); gotoXy(0,1); prints("OK");
-			while(!(I_BUTTON_LEFT_PRESSED));
+			while(!(I_BUTTON_CENTER_PRESSED));
 		break;
 		case REASON_MANUAL:
 			prints("Cambiar limites?");
@@ -340,7 +364,7 @@ uint8_t door_set_limits(uint8_t reason){
 			}while(!(I_BUTTON_LEFT_PRESSED));
 		break;
 	}
-	while(I_BUTTON_LEFT_PRESSED);
+	while(I_BUTTON_CENTER_PRESSED);
 
 	timer_save=0;
 
@@ -388,6 +412,9 @@ uint8_t door_save_limits(int upper, int lower){
 	write_flash_segA(lower, 0);
 	write_flash_segA(upper, 1);
 
+	lower_limit = lower;
+	upper_limit = upper;
+
 	return 1;
 }
 
@@ -413,7 +440,7 @@ void door_move(){
 			PORT_DOOR_RELAYS &= ~(O_DOOR_UP + O_DOOR_DOWN);     // 0 - ON
 		}
 	}while(!(I_BUTTON_CENTER_PRESSED));
-	__delay_cycles(5000000);
+	__delay_cycles(2000000);
 
 	while(I_BUTTON_CENTER_PRESSED);
 }
@@ -425,18 +452,30 @@ int get_AB_state(){
 
 	if(ChanState == 0x00)
 	{
+		LED0_OFF;
+		LED1_OFF;
 		P1IES = 0x00;
 		return Q0;
 	}
 	else if(ChanState == 0x04)
+	{
+		LED0_ON;
+		LED1_OFF;
 		return Q1;
+	}
 	else if(ChanState == 0x0C)
 	{
+		LED0_ON;
+		LED1_ON;
 		P1IES |= (I_CHAN1 + I_CHAN2);
 		return Q2;
 	}
 	else if(ChanState == 0x08)
+	{
+		LED0_OFF;
+		LED1_ON;
 		return Q3;
+	}
 
 	return Q2;
 }
